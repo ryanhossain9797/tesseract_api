@@ -13,18 +13,18 @@ struct ResponseType {
 }
 
 async fn get_text_from_image(image_base_64: String) -> Result<String, String> {
-    match general_purpose::STANDARD.decode(image_base_64) {
-        Ok(image_bytes) => match leptess::LepTess::new(None, "eng") {
-            Ok(mut lt) => match lt.set_image_from_mem(&image_bytes) {
-                Ok(_) => match lt.get_utf8_text() {
-                    Ok(ocrText) => Ok(ocrText),
-                    Err(utf8Error) => Err(format!("{utf8Error}")),
-                },
-                Err(pixError) => Err(format!("{pixError}")),
-            },
-            Err(tesseractError) => Err(format!("{tesseractError}")),
-        },
-        Err(decodeError) => Err(format!("{decodeError}")),
+    let image_bytes = general_purpose::STANDARD
+        .decode(image_base_64)
+        .map_err(|err| err.to_string())?;
+
+    let mut lt = leptess::LepTess::new(None, "eng").map_err(|err| err.to_string())?;
+
+    lt.set_image_from_mem(&image_bytes)
+        .map_err(|err| err.to_string())?;
+
+    match lt.get_utf8_text() {
+        Ok(ocr_text) => Ok(ocr_text),
+        Err(utf_8_error) => Err(format!("{utf_8_error}")),
     }
 }
 
@@ -39,8 +39,8 @@ async fn process(request: web::Json<RequestType>) -> impl Responder {
 
             HttpResponse::Ok().json(response_type)
         }
-        Err(errMsg) => HttpResponse::InternalServerError().json(ResponseType {
-            result: format!("{errMsg}"),
+        Err(err_msg) => HttpResponse::InternalServerError().json(ResponseType {
+            result: format!("{err_msg}"),
         }),
     }
 }

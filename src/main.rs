@@ -1,5 +1,7 @@
+mod base_64_adapter;
+mod core;
+
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
-use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
@@ -12,24 +14,29 @@ struct ResponseType {
     result: String,
 }
 
-async fn get_text_from_image(image_base_64: String) -> Result<String, String> {
-    let image_bytes = general_purpose::STANDARD
-        .decode(image_base_64)
-        .map_err(|err| err.to_string())?;
+async fn read_text(request: web::Json<RequestType>) -> impl Responder {
+    use base_64_adapter::*;
 
-    let mut lt = leptess::LepTess::new(None, "eng").map_err(|err| err.to_string())?;
+    let text_result = get_text_from_image_b64(request.image_base_64.clone());
 
-    lt.set_image_from_mem(&image_bytes)
-        .map_err(|err| err.to_string())?;
+    match text_result {
+        Ok(text) => {
+            let response_type = ResponseType {
+                result: format!("{text}"),
+            };
 
-    match lt.get_utf8_text() {
-        Ok(ocr_text) => Ok(ocr_text),
-        Err(utf_8_error) => Err(format!("{utf_8_error}")),
+            HttpResponse::Ok().json(response_type)
+        }
+        Err(err_msg) => HttpResponse::InternalServerError().json(ResponseType {
+            result: format!("{err_msg}"),
+        }),
     }
 }
 
-async fn process(request: web::Json<RequestType>) -> impl Responder {
-    let text_result = get_text_from_image(request.image_base_64.clone()).await;
+async fn to_black_and_white(request: web::Json<RequestType>) -> impl Responder {
+    use base_64_adapter::*;
+
+    let text_result = get_b_and_w_from_image_b64(request.image_base_64.clone());
 
     match text_result {
         Ok(text) => {
@@ -54,7 +61,8 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(|| {
         App::new()
             .route("/health", web::get().to(health))
-            .route("/process", web::post().to(process))
+            .route("/to_black_and_white", web::post().to(to_black_and_white))
+            .route("/read_text", web::post().to(read_text))
     })
     .bind("0.0.0.0:9876")?
     .run()
